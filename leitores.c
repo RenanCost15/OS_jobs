@@ -10,8 +10,10 @@
 int readcount = 0;
 
 //
-// TODO: Definição dos semáforos (variaveis precisam ser globais)
+// Definição dos semáforos (variaveis precisam ser globais)
 //
+sem_t mutex;
+sem_t wrt;
 
 // dado compartilhado que os leitores e escritores acessarão
 int shared = 0;
@@ -40,9 +42,10 @@ int main(int argc, char ** argv)
     }
 
     //
-    // TODO: Criação dos semáforos (aqui é quando define seus
-    // valores)
-    // 
+    // Criação dos semáforos
+    //
+    sem_init(&mutex, 0, 1);
+    sem_init(&wrt, 0, 1);
  
     // num leitores
     int N_LEITORES = atoi(argv[1]);
@@ -59,7 +62,7 @@ int main(int argc, char ** argv)
         pthread_create(&tl[i], NULL, leitor, (void *)i);
     }
     
-    // gerando uma lista de threads de leitores
+    // gerando uma lista de threads de escritores
     te = malloc(N_ESCRITORES * sizeof(pthread_t));
 
     // iniciando as threads dos escritores
@@ -81,8 +84,10 @@ int main(int argc, char ** argv)
     }
 
     //
-    // TODO: Excluindo os semaforos
-    // 
+    // Excluindo os semaforos
+    //
+    sem_destroy(&mutex);
+    sem_destroy(&wrt);
 
     // liberando a memoria alocada
     free(tl);
@@ -101,78 +106,93 @@ void * leitor(void * id)
     // variavel interna à thread para armazenar o valor compartilhado
     int shared_in;
 
-    printf("> Leitor %d tentando acesso\n",i);
+    printf("> Leitor %ld tentando acesso\n", i);
 
     //
-    // TODO: precisa fazer o controle de acesso à entrada do leitor
+    // controle de acesso à entrada do leitor
     //
-    
-    printf("> Leitor %d conseguiu acesso\n",i);
+    sem_wait(&mutex);
     readcount++;
+    if (readcount == 1)
+    {
+        sem_wait(&wrt);
+    }
+    sem_post(&mutex);
+    
+    printf("> Leitor %ld conseguiu acesso\n", i);
 
-        
-        // leitor acessando o valor de shared
-        printf("\t> Leitor %d acessando\n", i);
-        shared_in = shared;
-        usleep(gera_rand(1000000));
+    // leitor acessando o valor de shared
+    printf("\t> Leitor %ld acessando\n", i);
+    shared_in = shared;
+    usleep(gera_rand(1000000));
 
-        printf("\t> Leitor %d - tmp: %d - shared: %d - readcount: %d\n",
-                i, shared_in, shared, readcount);
+    printf("\t> Leitor %ld - tmp: %d - shared: %d - readcount: %d\n",
+            i, shared_in, shared, readcount);
 
-        if (shared_in != shared)
-        {
-            printf("\t==== ALERTA DO LEITOR ====\n");
-            printf("\t> Valor interno diferente do compartilhado\n\tshared_in: %d - shared: %d\n",
-                shared_in, shared);
-            printf("\t==========================\n");
-        }
+    if (shared_in != shared)
+    {
+        printf("\t==== ALERTA DO LEITOR ====\n");
+        printf("\t> Valor interno diferente do compartilhado\n\tshared_in: %d - shared: %d\n",
+            shared_in, shared);
+        printf("\t==========================\n");
+    }
 
     //
-    // TODO: precisa fazer a saída do leitor e liberação do acesso
+    // saída do leitor e liberação do acesso
     //
-
-    printf("< Leitor %d liberando acesso\n",i);
+    sem_wait(&mutex);
     readcount--;
+    if (readcount == 0)
+    {
+        sem_post(&wrt);
+    }
+    sem_post(&mutex);
 
+    printf("< Leitor %ld liberando acesso\n", i);
+
+    return NULL;
 }
 
 void * escritor(void * id)
 {
     usleep(gera_rand(1000000));
     
-    // convertendo o Id do leitor para int
+    // convertendo o Id do escritor para int
     long i = (long)id;
 
-    printf("+ Escritor %d tentando acesso\n",i);
+    printf("+ Escritor %ld tentando acesso\n", i);
 
     //
-    // TODO: precisa controlar o acesso do escritor ao recurso
+    // controla o acesso do escritor ao recurso
     //
+    sem_wait(&wrt);
     
-    printf("\t+ Escritor %d conseguiu acesso\n",i);
+    printf("\t+ Escritor %ld conseguiu acesso\n", i);
 
     if (readcount > 0)
     {
         printf("==== ALERTA DO ESCRITOR ====\n");
-        printf("Readcount possui valor: %d\n",readcount);
+        printf("Readcount possui valor: %d\n", readcount);
         printf("============================\n");
     }
 
     int rnd = gera_rand(100);
-    printf("\t+ Escritor %d gravando o valor %d em shared\n", i, rnd);
+    printf("\t+ Escritor %ld gravando o valor %d em shared\n", i, rnd);
     usleep(gera_rand(1000000));
     shared = rnd;
     
     //
-    // TODO: precisa fazer a saída do escritor e liberação do acesso
+    // saída do escritor e liberação do acesso
     //
+    sem_post(&wrt);
     
-    printf("+ Escritor %d saindo\n",i);
+    printf("+ Escritor %ld saindo\n", i);
+
+    return NULL;
 }
 
 int gera_rand(int limit)
 {
     // 0 a (limit -1)
-    return rand()%limit;
+    return rand() % limit;
 }
-
